@@ -1,0 +1,37 @@
+# Program specific parameters
+settings:
+  # The name of the IRC bot, make sure you change this!
+  bot_name: ad-amnis-irc-bot
+
+  # Can be 1080, 720, or 480
+  resolution: 1080
+
+  # Minutes between searching the episode listings
+  refresh_interval: 60
+
+  # Directory to move complete file transfers
+  complete_dir: 'complete'
+
+  # Directory to store transfers in progress
+  incomplete_dir: 'incomplete'
+
+  # Location of program specific metadata
+  data_dir: 'data'
+
+# List of shows that will be automatically downloaded
+shows:
+  - name: Example Show
+
+    # A substring unique to this show's filenames
+    pattern: show name s3
+
+    # Optional
+    # downloaded episodes moved to `complete/Example Show` instead of `complete`
+    automove: true
+
+    # Optional
+    # Download episodes 3 and later
+    start: 3
+
+  - name: Second Show
+    pattern: Second Show
