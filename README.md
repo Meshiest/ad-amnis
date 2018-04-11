@@ -13,7 +13,7 @@ The IRC-DCC anime downloader I was always too lazy to make.
 ### Install
 
 1. Clone this repo
-2 `npm install`
+2. `npm install`
 
 ### Running
 
