@@ -35,6 +35,10 @@ mkdir(config.settings.complete_dir);
 mkdir(config.settings.incomplete_dir);
 mkdir(config.settings.data_dir);
 
+function log(...msg) {
+  console.log(...msg);
+}
+
 const db = new sqlite3.Database(config.settings.data_dir + '/amnis.db');
 
 // Create our downloaded episodes table
@@ -42,10 +46,11 @@ db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS episodes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     show_name VARCHAR(128) NOT NULL,
+    download_time INTEGER NOT NULL,
     episode INTEGER NOT NULL
   );`);
   db.all('SELECT show_name, episode FROM episodes', (err, episodes) => {
-    console.log('Hello! I have downloaded', err ? [] : Array.from(episodes).length, 'episodes for you!');
+    log('Hello! Found', err ? [] : Array.from(episodes).length, 'episodes in the database!');
   });
 });
 
@@ -60,11 +65,32 @@ function getEpisodes(show) {
   });
 }
 
+// Matches episode name from show names
+function getEpisodesFromShow(show) {
+  return new Promise(resolve => {
+    db.serialize(() => {
+      db.all('SELECT * FROM episodes', (err, episodes) => {
+        if(err)
+          reject(err);
+        else {
+          resolve(
+            // find only matching shows
+            episodes.filter(e =>
+              e.show_name.toLowerCase()
+                .match(show.pattern.toLowerCase()))
+          );
+        }
+      });
+    });
+  });
+}
+
 // Store an episode for a show as downloaded
 function putEpisode(show, episode) {
   db.serialize(() => {
-    db.prepare('INSERT INTO episodes (show_name, episode) VALUES (?, ?);')
-      .run(show, episode);
+    db.prepare('INSERT INTO episodes (show_name, download_time, episode) VALUES (?, ?, ?);')
+      .run(show, Math.floor(Date.now() / 1000), episode);
+    updateDisplay();
   });
 }
 
@@ -115,7 +141,7 @@ let showMap = {};
 
 // Read feed and start downloads
 async function readFeed() {
-  console.log('Reading Feed');
+  lastUpdate = Date.now();
   // Search for all episodes
   let queue = [];
   let episodes = (await search('', config.settings.resolution));
@@ -138,7 +164,7 @@ async function readFeed() {
         if(episode >= (start || 0) &&
           !(await getEpisodes(showName)).includes(episode) &&
           (typeof downloading[filename] === 'undefined' || !downloading[filename])) {
-          console.log('Found', filename);
+          log('Found', filename);
           queue.push(episodes[i]);
           break;
         }
@@ -159,7 +185,7 @@ let feedInterval;
 // Start reading feeds when we get motd
 client.on('motd', motd => {
   clearInterval(feedInterval);
-  console.log('MOTD');
+  log('Starting Feed');
   readFeed();
   feedInterval = setInterval(readFeed, config.settings.refresh_interval * 60000);
 });
@@ -182,7 +208,7 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
   // Write to the incomplete dir while transferring
   let ws = fs.createWriteStream(`${incomplete_dir}/${filename}`);
 
-  console.log('Queued', filename);
+  log('Queued', filename);
   // Start the transfer
   dcc.acceptFile(from, host, port, filename, length, (err, filename, connection) => {
     if (err) {
@@ -191,7 +217,7 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
       return;
 
     } else {
-      console.log('Connected', filename);
+      log('Connected', filename);
 
       // Start transfer
       connection.pipe(ws);
@@ -200,13 +226,13 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
       connection.on('error', (err) => {
         delete downloading[filename];
         delete showMap[filename];
-        console.log('Error Downloading', filename, err);
+        log('Error Downloading', filename, err);
       });
 
       // Move file and update database upon download completion
       connection.on('end', () => {
         delete downloading[filename];
-        console.log('Completed', filename);
+        log('Completed', filename);
 
         // Determine if we are auto organizing this file
         const dir = showMap[filename].automove ? `${complete_dir}/${showMap[filename].name}` : complete_dir;
@@ -221,7 +247,7 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
           () => {
             const { show, episode } = metaFromFilename(filename);
             putEpisode(show, episode);
-            console.log('Moved', filename);
+            log('Moved', filename);
           }
         );
       });
@@ -232,11 +258,36 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
 
 client.on('notice', (source, target, message) => {
   if (message.match(/You have a DCC pending/) && source.match(/CR-ARCHIVE|(1080|720|480)p/)) {
-    console.log('Cancelling pending DCC');
+    log('Cancelling pending DCC');
     client.say(source, 'xdcc cancel');
   }
 });
 
 client.on('error', message => {
-    console.log('error: ', message);
+    log('error: ', message);
 });
+
+function exitHandler({cleanup, exit}, err) {
+  if (cleanup) {
+    console.log('Cleaning up...');
+    db.close();
+    client.say(`CR-ARCHIVE|${config.settings.resolution}p`, 'xdcc cancel');
+  }
+
+  if (exit) {
+    setTimeout(process.exit, 500);
+  }
+}
+
+//do something when app is closing
+process.on('exit', exitHandler.bind(null,{cleanup: true}));
+
+//catches ctrl+c event
+process.on('SIGINT', exitHandler.bind(null, {exit: true}));
+
+// catches "kill pid" (for example: nodemon restart)
+process.on('SIGUSR1', exitHandler.bind(null, {exit: true}));
+process.on('SIGUSR2', exitHandler.bind(null, {exit: true}));
+
+//catches uncaught exceptions
+process.on('uncaughtException', exitHandler.bind(null, {exit: true}));
