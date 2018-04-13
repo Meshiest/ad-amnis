@@ -90,7 +90,6 @@ function putEpisode(show, episode) {
   db.serialize(() => {
     db.prepare('INSERT INTO episodes (show_name, download_time, episode) VALUES (?, ?, ?);')
       .run(show, Math.floor(Date.now() / 1000), episode);
-    updateDisplay();
   });
 }
 
