@@ -10,6 +10,7 @@ The IRC-DCC anime downloader I was always too lazy to make.
 * Configurable via a single yml file!
 * Keeps track of which episodes have been downloaded to prevent redownloading
 * Automatically resume incomplete files
+* Hot loading of config files
 
 ### Install
 
