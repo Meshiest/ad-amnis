@@ -60,6 +60,7 @@ let downloading = {}, downloadInfo = {}, bars = {};
 function loadConfig(shouldReadFeed=false) {
   try {
     //  Loading the config out of the config.yml file
+    let oldName = config && config.settings.bot_name;
     config = yaml.safeLoad(fs.readFileSync('config.yml', 'utf8'));
 
     // Create our config directories
@@ -69,7 +70,8 @@ function loadConfig(shouldReadFeed=false) {
 
     if(shouldReadFeed) {
       readFeed();
-      client.say('nickserve', `set ${config.settings.bot_name}`);
+      if(config.settings.bot_name !== oldName)
+        client.say('nickserv', `set ${config.settings.bot_name}`);
     } else {
       client = new irc.Client('irc.rizon.net', config.settings.bot_name, {
         channels: [],
@@ -309,7 +311,6 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
 
   const completeCallback = () => {
     delete downloading[filename];
-    bars[filename].interrupt('Complete ' + filename);
 
     // Determine if we are auto organizing this file
     let show = showFromFilename(filename);
@@ -323,8 +324,6 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
       () => {
         const { show, episode } = metaFromFilename(filename);
         putEpisode(show, episode);
-        bars[filename].interrupt('Moved ' + filename);
-        delete bars[filename];
       }
     );
   };
@@ -338,26 +337,20 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
     }
   }
 
-  downloading[filename] = true;
-  if(!bars[filename])
-    bars[filename] = multi.newBar(`${filename} [:bar] :percent :etas`, {
-      total: length || downloadInfo[filename],
-      complete: '=',
-      incomplete: ' ',
-    });
-  else {
-    bars[filename].total = length || downloadInfo[filename];
-  }
-  bars[filename].update(start);
+  let bar = multi.newBar(`${filename} [:bar] :percent :etas`, {
+    total: length || downloadInfo[filename],
+    complete: '=',
+    incomplete: ' ',
+  });
+  bar.update(start);
   // Write to the incomplete dir while transferring
   let ws = fs.createWriteStream(`${incomplete_dir}/${filename}`, {flags: 'a+'});
 
+  downloading[filename] = true;
   // Start the transfer
   dcc.acceptFile(from, host, port, filename, length, start, (err, filename, connection) => {
     if (err) {
       console.error('Error Starting', filename, err);
-      bars[filename].interrupt('Error Starting');
-      delete bars[filename];
       client.notice(from, err);
       return;
 
@@ -368,7 +361,7 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
       connection.on('data', data => {
         let ticks = Buffer.byteLength(data);
         start += ticks;
-        bars[filename].tick(ticks);
+        bar.tick(ticks);
       });
 
       connection.on('error', err => {
@@ -376,8 +369,7 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
           completeCallback();
         } else {        
           delete downloading[filename];
-          bars[filename].interrupt('Error downloading ' + filename + ' ' + err);
-          delete bars[filename];
+          console.error('Error downloading ' + filename + ' ' + err);
         }
       });
 
