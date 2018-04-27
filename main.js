@@ -4,7 +4,6 @@ const fs = require('fs');
 const { Client } = require('node-rest-client');
 const yaml = require('js-yaml');
 const sqlite3 = require('sqlite3').verbose();
-<<<<<<< 0340d46d5f58b92dea2f9f45d8d1fe65df3e3b60
 const Multiprogress = require('multi-progress');
 const format = require('string-format');
 
@@ -27,28 +26,6 @@ DCC.prototype.acceptFile = function (from, host, port, filename, length, positio
     localAddress: self.localAddress
   };
 
-=======
-const ProgressBar = require('progress');
-const format = require('string-format');
-
-// needed to modify only this line for the irc-dcc library...
-const resume_template = 'DCC RESUME "{filename}" {port} {position}';
-
-// now I need to redeclare this..
-DCC.prototype.acceptFile = function (from, host, port, filename, length, position, callback) {
-  let self = this;
-  if (typeof position === 'function') {
-    callback = position;
-    position = null;
-  }
-
-  let connection_options = {
-    host: host,
-    port: port,
-    localAddress: self.localAddress
-  };
-
->>>>>>> Added progress bars and resume support
   if (!position) {
     DCC.acceptAndConnectFile(connection_options, filename, callback);
     return;
@@ -83,10 +60,7 @@ let downloading = {}, downloadInfo = {}, bars = {};
 function loadConfig(shouldReadFeed=false) {
   try {
     //  Loading the config out of the config.yml file
-<<<<<<< 0340d46d5f58b92dea2f9f45d8d1fe65df3e3b60
     let oldName = config && config.settings.bot_name;
-=======
->>>>>>> Added progress bars and resume support
     config = yaml.safeLoad(fs.readFileSync('config.yml', 'utf8'));
 
     // Create our config directories
@@ -94,17 +68,11 @@ function loadConfig(shouldReadFeed=false) {
     mkdir(config.settings.incomplete_dir);
     mkdir(config.settings.data_dir);
 
-<<<<<<< 0340d46d5f58b92dea2f9f45d8d1fe65df3e3b60
     if(shouldReadFeed) {
       readFeed();
       if(config.settings.bot_name !== oldName)
         client.say('nickserv', `set ${config.settings.bot_name}`);
     } else {
-=======
-    if(shouldReadFeed)
-      readFeed();
-    else {
->>>>>>> Added progress bars and resume support
       client = new irc.Client('irc.rizon.net', config.settings.bot_name, {
         channels: [],
       });
@@ -255,15 +223,9 @@ async function readFeed() {
   let episodes; 
   const crArchive = search('', config.settings.resolution);
   const ginpachi = search('', 'Ginpachi-Sensei');
-<<<<<<< 0340d46d5f58b92dea2f9f45d8d1fe65df3e3b60
   
   try {
     episodes = [].concat(await crArchive, (await ginpachi).filter(s => s.resolution === config.settings.resolution));
-=======
-  let episodes = [].concat(await crArchive, (await ginpachi).filter(s => s.resolution === config.settings.resolution));
-  try {
-    episodes = await search('', config.settings.resolution);
->>>>>>> Added progress bars and resume support
   } catch (e) {
     log('Error reading feed');
     return;
@@ -277,13 +239,8 @@ async function readFeed() {
       isIncomplete = incompleteFiles.includes(filename);
 
     if(isIncomplete && !isDownloading) {
-<<<<<<< 0340d46d5f58b92dea2f9f45d8d1fe65df3e3b60
       queue.push(episodes[i]);
       log('Found Incomplete', filename);
-=======
-      log('Found Incomplete', filename);
-      queue.push(episodes[i]);
->>>>>>> Added progress bars and resume support
     } else {
       let show = showFromFilename(filename);
       if(show) {
@@ -298,10 +255,6 @@ async function readFeed() {
         const isAfterStart = episode >= (show.start || 0);
 
         if(isAfterStart && !isDownloaded && !isDownloading) {
-<<<<<<< 0340d46d5f58b92dea2f9f45d8d1fe65df3e3b60
-=======
-          log('Found', filename);
->>>>>>> Added progress bars and resume support
           queue.push(episodes[i]);
           log('Found', filename);
         }
@@ -310,20 +263,6 @@ async function readFeed() {
   }
 
   if(queue.length > 0) {
-<<<<<<< bab45876b9d4fe756a12251312b29e457193478e
-    const targetName = `CR-ARCHIVE|${config.settings.resolution}p`;
-    queue = queue.map(s => s.index)
-    let queueStr = queue[0];
-    for(let i = 1; i < queue.length; i++) {
-      let [prev, curr, next] = [queue[i-1], queue[i], queue[i+1]];
-      if(prev + 1 === curr && curr + 1 !== next) {
-        queueStr += '-' + curr;
-      } else if (prev + 1 !== curr) {
-        queueStr += ',' + curr;
-      }
-    }
-    client.say(targetName, `xdcc batch ${queueStr}`);
-=======
     let targets = [];
     queue.forEach(e => targets.includes(e.user) || targets.push(e.user));
 
@@ -340,7 +279,6 @@ async function readFeed() {
       }
       client.say(targetName, `xdcc batch ${queueStr}`);
     });
->>>>>>> handle multiple user sources
   }
 }
 
@@ -363,6 +301,7 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
   // Only listen to CR-ARCHIVE users
   if(!from.match(/CR-ARCHIVE|(1080|720|480)p/))
     return;
+
   const args = DCC.parseDCC(text);
   if(args) {
     dcc.client.emit('dcc-' + args.type, from, args, message);
@@ -370,16 +309,9 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
     return;
   }
 
-<<<<<<< 0340d46d5f58b92dea2f9f45d8d1fe65df3e3b60
   let {filename, host, port, length} = args;
 
-  if(downloading[filename])
-=======
-  const args = DCC.parseDCC(text);
-  if(args) {
-    dcc.client.emit('dcc-' + args.type, from, args, message);
-  } else {
->>>>>>> Added progress bars and resume support
+  if(downloading[filename]) {
     return;
   }
 
@@ -406,34 +338,21 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
 
   const completeCallback = () => {
     delete downloading[filename];
-<<<<<<< 0340d46d5f58b92dea2f9f45d8d1fe65df3e3b60
-=======
     log('Completed', filename);
->>>>>>> Added progress bars and resume support
 
     // Determine if we are auto organizing this file
     let show = showFromFilename(filename);
     const dir = show && show.automove ? `${complete_dir}/${show.name}` : complete_dir;
     mkdir(dir);
-<<<<<<< 0340d46d5f58b92dea2f9f45d8d1fe65df3e3b60
-    console.log('Complete', filename);
-=======
->>>>>>> Added progress bars and resume support
 
     // Move the file from incomplete folder
     fs.rename(
       `${incomplete_dir}/${filename}`,
       `${dir}/${filename}`,
       () => {
-<<<<<<< 0340d46d5f58b92dea2f9f45d8d1fe65df3e3b60
-        console.log('Moved', filename);
-        const { show, episode } = metaFromFilename(filename);
-        putEpisode(show, episode);
-=======
         const { show, episode } = metaFromFilename(filename);
         putEpisode(show, episode);
         log('Moved', filename);
->>>>>>> Added progress bars and resume support
       }
     );
   };
@@ -444,39 +363,21 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
     if(start >= length) {
       completeCallback();
       return;
-<<<<<<< 0340d46d5f58b92dea2f9f45d8d1fe65df3e3b60
     }
   }
 
   let bar = multi.newBar(`${filename.replace(/^\[HorribleSubs\]/,'')} [:bar] :percent :etas :elapseds`, {
-=======
-    } else {
-      log('Queued Resume', filename);
-    }
-  } else {
-    log('Queued', filename);
-  }
-
-  downloading[filename] = true;
-  bars[filename] = new ProgressBar(`${filename} [:bar] :percent :etas`, {
->>>>>>> Added progress bars and resume support
     total: length || downloadInfo[filename],
     complete: '=',
     incomplete: ' ',
   });
-<<<<<<< 0340d46d5f58b92dea2f9f45d8d1fe65df3e3b60
-  bar.tick(start);
-  // Write to the incomplete dir while transferring
-  let ws = fs.createWriteStream(`${incomplete_dir}/${filename}`, {flags: 'a+'});
 
   downloading[filename] = true;
-=======
-  bars[filename].tick(start);
+  bar.tick(start);
   
   // Write to the incomplete dir while transferring
   let ws = fs.createWriteStream(`${incomplete_dir}/${filename}`, {flags: 'a+'});
 
->>>>>>> Added progress bars and resume support
   // Start the transfer
   dcc.acceptFile(from, host, port, filename, length, start, (err, filename, connection) => {
     if (err) {
@@ -491,7 +392,6 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
       connection.pipe(ws);
 
       connection.on('data', data => {
-<<<<<<< 0340d46d5f58b92dea2f9f45d8d1fe65df3e3b60
         bar.tick(data.length);
       });
 
@@ -507,18 +407,6 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
         }
       });
 
-=======
-        bars[filename].tick(Buffer.byteLength(data));
-      });
-
-      connection.on('error', err => {
-        delete downloading[filename];
-        log('Error Downloading', filename, err);
-        bars[filename].interrupt('Error downloading ' + err);
-        delete bars[filename];
-      });
-
->>>>>>> Added progress bars and resume support
       // Move file and update database upon download completion
       connection.on('end', () => completeCallback());
     }
