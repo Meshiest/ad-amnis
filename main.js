@@ -211,8 +211,7 @@ function showFromFilename(filename) {
 // Read feed and start downloads
 async function readFeed() {
   lastUpdate = Date.now();
-  let incompleteFiles = fs.readdirSync(config.settings.incomplete_dir)
-    .filter(file => !downloading[file])
+  let incompleteFiles = fs.readdirSync(config.settings.incomplete_dir);
 
   // Search for all episodes
   let queue = [];
@@ -337,12 +336,12 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
     }
   }
 
-  let bar = multi.newBar(`${filename} [:bar] :percent :etas`, {
+  let bar = multi.newBar(`${filename} [:bar] :percent :etas :elapseds`, {
     total: length || downloadInfo[filename],
     complete: '=',
     incomplete: ' ',
   });
-  bar.update(start);
+  bar.tick(start);
   // Write to the incomplete dir while transferring
   let ws = fs.createWriteStream(`${incomplete_dir}/${filename}`, {flags: 'a+'});
 
@@ -359,17 +358,18 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
       connection.pipe(ws);
 
       connection.on('data', data => {
-        let ticks = Buffer.byteLength(data);
-        start += ticks;
-        bar.tick(ticks);
+        bar.tick(data.length);
       });
 
       connection.on('error', err => {
-        if(start >= length) {
-          completeCallback();
-        } else {        
-          delete downloading[filename];
-          console.error('Error downloading ' + filename + ' ' + err);
+        delete downloading[filename];
+        console.error('\nError downloading ' + filename + ' ' + err);
+        if(err && err.message.match(/ECONNRESET/)) {
+          console.error('Restarting...');
+          dcc.client.ctcp(from, 'privmsg', format(resume_template, {
+            filename,
+            position: fs.statSync(`${incomplete_dir}/${filename}`).size,
+          }));
         }
       });
 
