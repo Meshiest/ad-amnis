@@ -245,7 +245,6 @@ async function readFeed() {
         if(isAfterStart && !isDownloaded && !isDownloading) {
           log('Found', filename);
           queue.push(episodes[i]);
-          break;
         }
       }
     }
