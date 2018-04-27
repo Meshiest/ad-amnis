@@ -4,8 +4,10 @@ const fs = require('fs');
 const { Client } = require('node-rest-client');
 const yaml = require('js-yaml');
 const sqlite3 = require('sqlite3').verbose();
-const ProgressBar = require('progress');
+const Multiprogress = require('multi-progress');
 const format = require('string-format');
+
+const multi = new Multiprogress(process.stderr);
 
 // needed to modify only this line for the irc-dcc library...
 const resume_template = 'DCC RESUME "{filename}" {port} {position}';
@@ -266,6 +268,7 @@ client.on('motd', motd => {
   feedInterval = setInterval(readFeed, config.settings.refresh_interval * 60000);
 });
 
+
 client.on('ctcp-privmsg', (from, to, text, type, message) => {
   // Ignore first message
   if(text === 'VERSION')
@@ -299,6 +302,7 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
   const completeCallback = () => {
     delete downloading[filename];
     log('Completed', filename);
+    bars[filename].interrupt('Complete ' + filename);
 
     // Determine if we are auto organizing this file
     let show = showFromFilename(filename);
@@ -312,7 +316,9 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
       () => {
         const { show, episode } = metaFromFilename(filename);
         putEpisode(show, episode);
-        log('Moved', filename);
+        bars[filename].interrupt('Moved ' + filename);
+        bars[filename].terminate();
+        
       }
     );
   };
@@ -323,21 +329,20 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
     if(start >= length) {
       completeCallback();
       return;
-    } else {
-      log('Queued Resume', filename);
     }
-  } else {
-    log('Queued', filename);
   }
 
   downloading[filename] = true;
-  bars[filename] = new ProgressBar(`${filename} [:bar] :percent :etas`, {
-    total: length || downloadInfo[filename],
-    complete: '=',
-    incomplete: ' ',
-  });
-  bars[filename].tick(start);
-  
+  if(!bars[filename])
+    bars[filename] = multi.newBar(`${filename} [:bar] :percent :etas`, {
+      total: length || downloadInfo[filename],
+      complete: '=',
+      incomplete: ' ',
+    });
+  else {
+    bars[filename].total = length || downloadInfo[filename];
+  }
+  bars[filename].update(start);
   // Write to the incomplete dir while transferring
   let ws = fs.createWriteStream(`${incomplete_dir}/${filename}`, {flags: 'a+'});
 
@@ -351,20 +356,23 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
       return;
 
     } else {
-      log('Connected', filename);
-
       // Start transfer
       connection.pipe(ws);
 
       connection.on('data', data => {
-        bars[filename].tick(Buffer.byteLength(data));
+        let ticks = Buffer.byteLength(data);
+        start += ticks;
+        bars[filename].tick(ticks);
       });
 
       connection.on('error', err => {
-        delete downloading[filename];
-        log('Error Downloading', filename, err);
-        bars[filename].interrupt('Error downloading ' + err);
-        delete bars[filename];
+        if(start >= length) {
+          completeCallback();
+        } else {        
+          delete downloading[filename];
+          bars[filename].interrupt('Error downloading ' + filename + ' ' + err);
+          delete bars[filename];
+        }
       });
 
       // Move file and update database upon download completion
