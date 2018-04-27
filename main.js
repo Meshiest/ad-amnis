@@ -4,24 +4,45 @@ const fs = require('fs');
 const { Client } = require('node-rest-client');
 const yaml = require('js-yaml');
 const sqlite3 = require('sqlite3').verbose();
- 
+const ProgressBar = require('progress');
+const format = require('string-format');
+
+// needed to modify only this line for the irc-dcc library...
+const resume_template = 'DCC RESUME "{filename}" {port} {position}';
+
+// now I need to redeclare this..
+DCC.prototype.acceptFile = function (from, host, port, filename, length, position, callback) {
+  let self = this;
+  if (typeof position === 'function') {
+    callback = position;
+    position = null;
+  }
+
+  let connection_options = {
+    host: host,
+    port: port,
+    localAddress: self.localAddress
+  };
+
+  if (!position) {
+    DCC.acceptAndConnectFile(connection_options, filename, callback);
+    return;
+  }
+  
+  self.client.ctcp(from, 'privmsg', format(resume_template, {
+    filename: filename,
+    port: port,
+    position: position
+  }));
+
+  self.client.once('dcc-accept', (from, args) => {
+    if (args.filename === filename && args.port === port) {
+      DCC.acceptAndConnectFile(connection_options, filename, callback);
+    }
+  });
+};
+
 let rest = new Client();
-
-//  Loading the config out of the config.yml file
-let config;
-try {
-  config = yaml.safeLoad(fs.readFileSync('config.yml', 'utf8'));
-} catch (e) {
-  console.error('Missing config.yml. Please reference config.yml.default');
-  process.exit(1);
-}
-
-let client = new irc.Client('irc.rizon.net', config.settings.bot_name, {
-    channels: [],
-});
-let dcc = new DCC(client);
-
-let downloading = {};
 
 // Create a directory if it doesn't exist
 function mkdir(dir) {
@@ -30,10 +51,46 @@ function mkdir(dir) {
   }
 }
 
-// Create our config directories
-mkdir(config.settings.complete_dir);
-mkdir(config.settings.incomplete_dir);
-mkdir(config.settings.data_dir);
+let config, client, dcc;
+let downloading = {}, downloadInfo = {}, bars = {};
+
+/* Loads the config and updates the feed if `shouldReadFeed` is true */
+function loadConfig(shouldReadFeed=false) {
+  try {
+    //  Loading the config out of the config.yml file
+    config = yaml.safeLoad(fs.readFileSync('config.yml', 'utf8'));
+
+    // Create our config directories
+    mkdir(config.settings.complete_dir);
+    mkdir(config.settings.incomplete_dir);
+    mkdir(config.settings.data_dir);
+
+    if(shouldReadFeed)
+      readFeed();
+    else {
+      client = new irc.Client('irc.rizon.net', config.settings.bot_name, {
+        channels: [],
+      });
+      dcc = new DCC(client);
+    }
+
+  } catch (e) {
+    console.error('Missing config.yml. Please reference config.yml.default');
+    process.exit(1);
+  }
+}
+
+loadConfig(false);
+
+let reloadTimeout;
+fs.watchFile('config.yml', (curr, prev) => {
+  let time = Date.now();
+  log('Config modified, reloading in 3 seconds');
+
+  clearTimeout(reloadTimeout);
+  reloadTimeout = setTimeout(() => loadConfig(true), 3000);
+});
+
 
 function log(...msg) {
   console.log(...msg);
@@ -136,33 +193,56 @@ function search(terms, user) {
 }
 
 // Maps a filename to the config show
-let showMap = {};
+function showFromFilename(filename) {
+  for(let j = 0; j < config.shows.length; j++) {
+    const { start, pattern, name } = config.shows[j];
+    if(filename.toLowerCase().match(pattern.toLowerCase())) {
+      return config.shows[j];
+    }
+  }
+  return undefined;
+}
 
 // Read feed and start downloads
 async function readFeed() {
   lastUpdate = Date.now();
+  let incompleteFiles = fs.readdirSync(config.settings.incomplete_dir)
+    .filter(file => !downloading[file])
+
   // Search for all episodes
   let queue = [];
-  let episodes = (await search('', config.settings.resolution));
+  let episodes; 
+  try {
+    episodes = await search('', config.settings.resolution);
+  } catch (e) {
+    log('Error reading feed');
+    return;
+  }
 
   // cannot use .filter as it does not work with async functions
   for(let i = 0; i < episodes.length; i++) {
     const { filename, episode, showName } = episodes[i];
+    const isDownloading = !(typeof downloading[filename] === 'undefined' || !downloading[filename]),
+      isDownloaded = (await getEpisodes(showName)).includes(episode),
+      isIncomplete = incompleteFiles.includes(filename);
 
-    for(let j = 0; j < config.shows.length; j++) {
-      const { start, pattern, name } = config.shows[j];
-      if(filename.toLowerCase().match(pattern.toLowerCase())) {
-        showMap[filename] = config.shows[j];
-
+    if(isIncomplete && !isDownloading) {
+      log('Found Incomplete', filename);
+      queue.push(episodes[i]);
+    } else {
+      let show = showFromFilename(filename);
+      if(show) {
         /*
           Only download this if matches these conditions:
-            - it is after the specified start episode
-            - it has not been previously downloaded
+              - it is after the specified start episode
+              - it has not been previously downloaded
+            OR
+              - it is an incomplete download
             - it is not being currently downloaded
         */
-        if(episode >= (start || 0) &&
-          !(await getEpisodes(showName)).includes(episode) &&
-          (typeof downloading[filename] === 'undefined' || !downloading[filename])) {
+        const isAfterStart = episode >= (show.start || 0);
+
+        if(isAfterStart && !isDownloaded && !isDownloading) {
           log('Found', filename);
           queue.push(episodes[i]);
           break;
@@ -172,10 +252,8 @@ async function readFeed() {
   }
 
   if(episodes.length > 0) {
-    client.say(
-      `CR-ARCHIVE|${config.settings.resolution}p`,
-      `xdcc batch ${queue.map(s => s.index).join(',')}`
-    );
+    const targetName = `CR-ARCHIVE|${config.settings.resolution}p`;
+    client.say(targetName, `xdcc batch ${queue.map(s => s.index).join(',')}`);
   }
 }
 
@@ -198,20 +276,78 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
   if(!from.match(/CR-ARCHIVE|(1080|720|480)p/))
     return;
 
-  const {filename, host, port, length} = DCC.parseDCC(text);
-  if(!filename)
+  const args = DCC.parseDCC(text);
+  if(args) {
+    dcc.client.emit('dcc-' + args.type, from, args, message);
+  } else {
     return;
+  }
+
+  let {filename, host, port, length} = args;
+
+  if(downloading[filename])
+    return;
+
+  if(length) {
+    downloadInfo[filename] = args;
+  } else {
+    host = downloadInfo[filename].host;
+    length = downloadInfo[filename].length;
+  }
 
   const {complete_dir, incomplete_dir} = config.settings;
 
-  // Write to the incomplete dir while transferring
-  let ws = fs.createWriteStream(`${incomplete_dir}/${filename}`);
+  const completeCallback = () => {
+    delete downloading[filename];
+    log('Completed', filename);
 
-  log('Queued', filename);
+    // Determine if we are auto organizing this file
+    let show = showFromFilename(filename);
+    const dir = show && show.automove ? `${complete_dir}/${show.name}` : complete_dir;
+    mkdir(dir);
+
+    // Move the file from incomplete folder
+    fs.rename(
+      `${incomplete_dir}/${filename}`,
+      `${dir}/${filename}`,
+      () => {
+        const { show, episode } = metaFromFilename(filename);
+        putEpisode(show, episode);
+        log('Moved', filename);
+      }
+    );
+  };
+
+  let start = 0;
+  if(fs.existsSync(`${incomplete_dir}/${filename}`)) {
+    start = fs.statSync(`${incomplete_dir}/${filename}`).size;
+    if(start >= length) {
+      completeCallback();
+      return;
+    } else {
+      log('Queued Resume', filename);
+    }
+  } else {
+    log('Queued', filename);
+  }
+
+  downloading[filename] = true;
+  bars[filename] = new ProgressBar(`${filename} [:bar] :percent :etas`, {
+    total: length || downloadInfo[filename],
+    complete: '=',
+    incomplete: ' ',
+  });
+  bars[filename].tick(start);
+  
+  // Write to the incomplete dir while transferring
+  let ws = fs.createWriteStream(`${incomplete_dir}/${filename}`, {flags: 'a+'});
+
   // Start the transfer
-  dcc.acceptFile(from, host, port, filename, length, (err, filename, connection) => {
+  dcc.acceptFile(from, host, port, filename, length, start, (err, filename, connection) => {
     if (err) {
       console.error('Error Starting', filename, err);
+      bars[filename].interrupt('Error Starting');
+      delete bars[filename];
       client.notice(from, err);
       return;
 
@@ -220,36 +356,20 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
 
       // Start transfer
       connection.pipe(ws);
-      downloading[filename] = true;
 
-      connection.on('error', (err) => {
+      connection.on('data', data => {
+        bars[filename].tick(Buffer.byteLength(data));
+      });
+
+      connection.on('error', err => {
         delete downloading[filename];
-        delete showMap[filename];
         log('Error Downloading', filename, err);
+        bars[filename].interrupt('Error downloading ' + err);
+        delete bars[filename];
       });
 
       // Move file and update database upon download completion
-      connection.on('end', () => {
-        delete downloading[filename];
-        log('Completed', filename);
-
-        // Determine if we are auto organizing this file
-        const dir = showMap[filename].automove ? `${complete_dir}/${showMap[filename].name}` : complete_dir;
-        mkdir(dir);
-
-        delete showMap[filename];
-
-        // Move the file from incomplete folder
-        fs.rename(
-          `${incomplete_dir}/${filename}`,
-          `${dir}/${filename}`,
-          () => {
-            const { show, episode } = metaFromFilename(filename);
-            putEpisode(show, episode);
-            log('Moved', filename);
-          }
-        );
-      });
+      connection.on('end', () => completeCallback());
     }
 
   });
@@ -267,6 +387,7 @@ client.on('error', message => {
 });
 
 function exitHandler({cleanup, exit}, err) {
+  console.log(err);
   if (cleanup) {
     console.log('Cleaning up...');
     db.close();
