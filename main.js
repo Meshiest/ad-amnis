@@ -67,9 +67,10 @@ function loadConfig(shouldReadFeed=false) {
     mkdir(config.settings.incomplete_dir);
     mkdir(config.settings.data_dir);
 
-    if(shouldReadFeed)
+    if(shouldReadFeed) {
       readFeed();
-    else {
+      client.say('nickserve', `set ${config.settings.bot_name}`);
+    } else {
       client = new irc.Client('irc.rizon.net', config.settings.bot_name, {
         channels: [],
       });
@@ -229,7 +230,6 @@ async function readFeed() {
       isIncomplete = incompleteFiles.includes(filename);
 
     if(isIncomplete && !isDownloading) {
-      log('Found Incomplete', filename);
       queue.push(episodes[i]);
     } else {
       let show = showFromFilename(filename);
@@ -245,16 +245,25 @@ async function readFeed() {
         const isAfterStart = episode >= (show.start || 0);
 
         if(isAfterStart && !isDownloaded && !isDownloading) {
-          log('Found', filename);
           queue.push(episodes[i]);
         }
       }
     }
   }
 
-  if(episodes.length > 0) {
+  if(queue.length > 0) {
     const targetName = `CR-ARCHIVE|${config.settings.resolution}p`;
-    client.say(targetName, `xdcc batch ${queue.map(s => s.index).join(',')}`);
+    queue = queue.map(s => s.index)
+    let queueStr = queue[0];
+    for(let i = 1; i < queue.length; i++) {
+      let [prev, curr, next] = [queue[i-1], queue[i], queue[i+1]];
+      if(prev + 1 === curr && curr + 1 !== next) {
+        queueStr += '-' + curr;
+      } else if (prev + 1 !== curr) {
+        queueStr += ',' + curr;
+      }
+    }
+    client.say(targetName, `xdcc batch ${queueStr}`);
   }
 }
 
@@ -277,7 +286,6 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
   // Only listen to CR-ARCHIVE users
   if(!from.match(/CR-ARCHIVE|(1080|720|480)p/))
     return;
-
   const args = DCC.parseDCC(text);
   if(args) {
     dcc.client.emit('dcc-' + args.type, from, args, message);
@@ -301,7 +309,6 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
 
   const completeCallback = () => {
     delete downloading[filename];
-    log('Completed', filename);
     bars[filename].interrupt('Complete ' + filename);
 
     // Determine if we are auto organizing this file
@@ -317,8 +324,7 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
         const { show, episode } = metaFromFilename(filename);
         putEpisode(show, episode);
         bars[filename].interrupt('Moved ' + filename);
-        bars[filename].terminate();
-        
+        delete bars[filename];
       }
     );
   };
