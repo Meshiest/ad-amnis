@@ -232,6 +232,7 @@ async function readFeed() {
 
     if(isIncomplete && !isDownloading) {
       queue.push(episodes[i]);
+      log('Found Incomplete', filename);
     } else {
       let show = showFromFilename(filename);
       if(show) {
@@ -247,6 +248,7 @@ async function readFeed() {
 
         if(isAfterStart && !isDownloaded && !isDownloading) {
           queue.push(episodes[i]);
+          log('Found', filename);
         }
       }
     }
@@ -315,12 +317,14 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
     let show = showFromFilename(filename);
     const dir = show && show.automove ? `${complete_dir}/${show.name}` : complete_dir;
     mkdir(dir);
+    console.log('Complete', filename);
 
     // Move the file from incomplete folder
     fs.rename(
       `${incomplete_dir}/${filename}`,
       `${dir}/${filename}`,
       () => {
+        console.log('Moved', filename);
         const { show, episode } = metaFromFilename(filename);
         putEpisode(show, episode);
       }
@@ -336,7 +340,7 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
     }
   }
 
-  let bar = multi.newBar(`${filename} [:bar] :percent :etas :elapseds`, {
+  let bar = multi.newBar(`${filename.replace(/^\[HorribleSubs\]/,'')} [:bar] :percent :etas :elapseds`, {
     total: length || downloadInfo[filename],
     complete: '=',
     incomplete: ' ',
@@ -382,7 +386,7 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
 
 client.on('notice', (source, target, message) => {
   if (message.match(/You have a DCC pending/) && source.match(/CR-ARCHIVE|(1080|720|480)p/)) {
-    log('Cancelling pending DCC');
+    log('Cancelling pending DCC', message);
     client.say(source, 'xdcc cancel');
   }
 });
