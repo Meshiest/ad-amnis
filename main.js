@@ -211,12 +211,8 @@ function showFromFilename(filename) {
 // Read feed and start downloads
 async function readFeed() {
   lastUpdate = Date.now();
-<<<<<<< 0340d46d5f58b92dea2f9f45d8d1fe65df3e3b60
-  let incompleteFiles = fs.readdirSync(config.settings.incomplete_dir);
-=======
   let incompleteFiles = fs.readdirSync(config.settings.incomplete_dir)
     .filter(file => !downloading[file])
->>>>>>> Added progress bars and resume support
 
   // Search for all episodes
   let queue = [];
@@ -315,11 +311,6 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
     return;
   }
 
-  let {filename, host, port, length} = args;
-
-  if(downloading[filename])
-    return;
-
   if(length) {
     downloadInfo[filename] = args;
   } else {
@@ -384,7 +375,7 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
       console.error('Error Starting', filename, err);
       bars[filename].interrupt('Error Starting');
       delete bars[filename];
-      client.notice(from, err);
+      client.notice(from, err);n
       return;
 
     } else {
