@@ -227,15 +227,22 @@ async function readFeed() {
     return;
   }
 
+  let added = {};
+
   // cannot use .filter as it does not work with async functions
   for(let i = 0; i < episodes.length; i++) {
     const { filename, episode, showName } = episodes[i];
     const isDownloading = !(typeof downloading[filename] === 'undefined' || !downloading[filename]),
       isDownloaded = (await getEpisodes(showName)).includes(episode),
-      isIncomplete = incompleteFiles.includes(filename);
+      isIncomplete = incompleteFiles.includes(filename),
+      isAdded = !!added[filename];
+
+    if(isAdded)
+      continue;
 
     if(isIncomplete && !isDownloading) {
       queue.push(episodes[i]);
+      added[filename] = true;
       log('Found Incomplete', filename);
     } else {
       let show = showFromFilename(filename);
@@ -252,6 +259,7 @@ async function readFeed() {
 
         if(isAfterStart && !isDownloaded && !isDownloading) {
           queue.push(episodes[i]);
+          added[filename] = true;
           log('Found', filename);
         }
       }
@@ -263,10 +271,10 @@ async function readFeed() {
     queue.forEach(e => targets.includes(e.user) || targets.push(e.user));
 
     targets.map(targetName => {
-      let queue = queue.filter(e => e.user === targetName).queue.map(s => s.index);
-      let queueStr = queue[0];
-      for(let i = 1; i < queue.length; i++) {
-        let [prev, curr, next] = [queue[i-1], queue[i], queue[i+1]];
+      let q = queue.filter(e => e.user === targetName).map(s => s.index);
+      let queueStr = q[0];
+      for(let i = 1; i < q.length; i++) {
+        let [prev, curr, next] = [q[i-1], q[i], q[i+1]];
         if(prev + 1 === curr && curr + 1 !== next) {
           queueStr += '-' + curr;
         } else if (prev + 1 !== curr) {
