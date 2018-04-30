@@ -216,8 +216,11 @@ async function readFeed() {
   // Search for all episodes
   let queue = [];
   let episodes; 
+  const crArchive = search('', config.settings.resolution);
+  const ginpachi = search('', 'Ginpachi-Sensei');
+  
   try {
-    episodes = await search('', config.settings.resolution);
+    episodes = [].concat(await crArchive, (await ginpachi).filter(s => s.resolution === config.settings.resolution));
   } catch (e) {
     log('Error reading feed');
     return;
