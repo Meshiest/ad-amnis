@@ -143,7 +143,9 @@ async function readFeed() {
   lastUpdate = Date.now();
   // Search for all episodes
   let queue = [];
-  let episodes = (await search('', config.settings.resolution));
+  const crArchive = search('', config.settings.resolution);
+  const ginpachi = search('', 'Ginpachi-Sensei');
+  let episodes = [].concat(await crArchive, (await ginpachi).filter(s => s.resolution === config.settings.resolution));
 
   // cannot use .filter as it does not work with async functions
   for(let i = 0; i < episodes.length; i++) {
