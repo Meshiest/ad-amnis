@@ -75,6 +75,7 @@ function loadConfig(shouldReadFeed=false) {
     } else {
       client = new irc.Client('irc.rizon.net', config.settings.bot_name, {
         channels: [],
+        // debug: true,
       });
       dcc = new DCC(client);
     }
@@ -218,10 +219,9 @@ async function readFeed() {
   let queue = [];
   let episodes; 
   const crArchive = search('', config.settings.resolution);
-  const ginpachi = search('', 'Ginpachi-Sensei');
   
   try {
-    episodes = [].concat(await crArchive, (await ginpachi).filter(s => s.resolution === config.settings.resolution));
+    episodes = await crArchive;
   } catch (e) {
     log('Error reading feed');
     return;
@@ -269,7 +269,7 @@ async function readFeed() {
   if(queue.length > 0) {
     let targets = [];
     queue.forEach(e => targets.includes(e.user) || targets.push(e.user));
-
+    console.log('targets:', targets+'');
     targets.map(targetName => {
       let q = queue.filter(e => e.user === targetName).map(s => s.index);
       let queueStr = q[0];
@@ -281,6 +281,7 @@ async function readFeed() {
           queueStr += ',' + curr;
         }
       }
+      console.log(targetName, '->', queueStr);
       client.say(targetName, `xdcc batch ${queueStr}`);
     });
   }
@@ -296,14 +297,14 @@ client.on('motd', motd => {
   feedInterval = setInterval(readFeed, config.settings.refresh_interval * 60000);
 });
 
-
 client.on('ctcp-privmsg', (from, to, text, type, message) => {
   // Ignore first message
   if(text === 'VERSION')
     return;
 
+  log(from, message);
   // Only listen to CR-ARCHIVE users
-  if(!from.match(/CR-ARCHIVE|(1080|720|480)p/))
+  if(!from.match(/CR-ARCHIVE\|(1080|720|480)p/))
     return;
 
   const args = DCC.parseDCC(text);
@@ -383,7 +384,7 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
       console.error('Error Starting', filename, err);
       bars[filename].interrupt('Error Starting');
       delete bars[filename];
-      client.notice(from, err);n
+      client.notice(from, err);
       return;
 
     } else {
@@ -395,6 +396,7 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
       });
 
       connection.on('error', err => {
+        ws.end();
         delete downloading[filename];
         console.error('\nError downloading ' + filename + ' ' + err);
         if(err && err.message.match(/ECONNRESET/)) {
@@ -407,16 +409,21 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
       });
 
       // Move file and update database upon download completion
-      connection.on('end', () => completeCallback());
+      connection.on('end', () => {
+        ws.end();
+        completeCallback()
+      });
     }
 
   });
 });
 
 client.on('notice', (source, target, message) => {
-  if (message.match(/You have a DCC pending/) && source.match(/CR-ARCHIVE|(1080|720|480)p/)) {
+  if (message.match(/You have a DCC pending/) && source.match(/CR-ARCHIVE\|(1080|720|480)p/)) {
     log('Cancelling pending DCC', message);
     client.say(source, 'xdcc cancel');
+  } else {
+    log(source, 'says', message);
   }
 });
 
