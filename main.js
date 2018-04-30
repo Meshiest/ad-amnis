@@ -258,6 +258,7 @@ async function readFeed() {
   }
 
   if(queue.length > 0) {
+<<<<<<< bab45876b9d4fe756a12251312b29e457193478e
     const targetName = `CR-ARCHIVE|${config.settings.resolution}p`;
     queue = queue.map(s => s.index)
     let queueStr = queue[0];
@@ -270,6 +271,24 @@ async function readFeed() {
       }
     }
     client.say(targetName, `xdcc batch ${queueStr}`);
+=======
+    let targets = [];
+    queue.forEach(e => targets.includes(e.user) || targets.push(e.user));
+
+    targets.map(targetName => {
+      let queue = queue.filter(e => e.user === targetName).queue.map(s => s.index);
+      let queueStr = queue[0];
+      for(let i = 1; i < queue.length; i++) {
+        let [prev, curr, next] = [queue[i-1], queue[i], queue[i+1]];
+        if(prev + 1 === curr && curr + 1 !== next) {
+          queueStr += '-' + curr;
+        } else if (prev + 1 !== curr) {
+          queueStr += ',' + curr;
+        }
+      }
+      client.say(targetName, `xdcc batch ${queueStr}`);
+    });
+>>>>>>> handle multiple user sources
   }
 }
 
