@@ -229,6 +229,7 @@ async function readFeed() {
 
   let added = {};
 
+
   // cannot use .filter as it does not work with async functions
   for(let i = 0; i < episodes.length; i++) {
     const { filename, episode, showName } = episodes[i];
