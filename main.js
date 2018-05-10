@@ -269,7 +269,6 @@ async function readFeed() {
   if(queue.length > 0) {
     let targets = [];
     queue.forEach(e => targets.includes(e.user) || targets.push(e.user));
-    console.log('targets:', targets+'');
     targets.map(targetName => {
       let q = queue.filter(e => e.user === targetName).map(s => s.index);
       let queueStr = q[0];
@@ -281,7 +280,6 @@ async function readFeed() {
           queueStr += ',' + curr;
         }
       }
-      console.log(targetName, '->', queueStr);
       client.say(targetName, `xdcc batch ${queueStr}`);
     });
   }
@@ -302,7 +300,6 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
   if(text === 'VERSION')
     return;
 
-  log(from, message);
   // Only listen to CR-ARCHIVE users
   if(!from.match(/CR-ARCHIVE\|(1080|720|480)p/))
     return;
@@ -366,7 +363,7 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
     }
   }
 
-  let bar = multi.newBar(`${filename.replace(/^\[HorribleSubs\]/,'')} [:bar] :percent :etas :elapseds`, {
+  let bar = multi.newBar(`${filename.replace(/^\[HorribleSubs\] /,'')} :percent :etas :elapseds`, {
     total: length || downloadInfo[filename],
     complete: '=',
     incomplete: ' ',
@@ -422,8 +419,6 @@ client.on('notice', (source, target, message) => {
   if (message.match(/You have a DCC pending/) && source.match(/CR-ARCHIVE\|(1080|720|480)p/)) {
     log('Cancelling pending DCC', message);
     client.say(source, 'xdcc cancel');
-  } else {
-    log(source, 'says', message);
   }
 });
 
