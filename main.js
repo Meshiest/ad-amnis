@@ -212,8 +212,9 @@ function showFromFilename(filename) {
 // Read feed and start downloads
 async function readFeed() {
   lastUpdate = Date.now();
-  let incompleteFiles = fs.readdirSync(config.settings.incomplete_dir)
-    .filter(file => !downloading[file])
+  const { complete_dir, incomplete_dir } = config.settings;
+  let incompleteFiles = fs.readdirSync(incomplete_dir)
+    .filter(file => !downloading[file]);
 
   // Search for all episodes
   let queue = [];
@@ -238,15 +239,26 @@ async function readFeed() {
       isIncomplete = incompleteFiles.includes(filename),
       isAdded = !!added[filename];
 
+
     if(isAdded)
       continue;
+
+    let show = showFromFilename(filename);
+    const dir = show && show.automove ? `${complete_dir}/${show.name}` : complete_dir;
+
+    if(isIncomplete && fs.existsSync(`${dir}/${filename}`)) {
+      log('Removing already completed', filename, 'from incomplete');
+      fs.unlink(`${incomplete_dir}/${filename}`, err => {
+        err && log('Error removing', filename, ':', err);
+      });
+      continue;
+    }
 
     if(isIncomplete && !isDownloading) {
       queue.push(episodes[i]);
       added[filename] = true;
       log('Found Incomplete', filename);
     } else {
-      let show = showFromFilename(filename);
       if(show) {
         /*
           Only download this if matches these conditions:
