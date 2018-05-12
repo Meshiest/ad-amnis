@@ -430,7 +430,6 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
 
 client.on('notice', (source, target, message) => {
   if (message.match(/You have a DCC pending/) && source.match(/CR-ARCHIVE\|(1080|720|480)p/)) {
-    log('Cancelling pending DCC', message);
     client.say(source, 'xdcc cancel');
   }
 });
