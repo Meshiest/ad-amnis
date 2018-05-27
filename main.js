@@ -102,6 +102,12 @@ function log(...msg) {
   console.log(...msg);
 }
 
+// remove a substring
+function rmhs(file) {
+  const {show, resolution, episode} = metaFromFilename(file);
+  return show + '#' + episode;
+}
+
 const db = new sqlite3.Database(config.settings.data_dir + '/amnis.db');
 
 // Create our downloaded episodes table
@@ -247,9 +253,9 @@ async function readFeed() {
     const dir = show && show.automove ? `${complete_dir}/${show.name}` : complete_dir;
 
     if(isIncomplete && fs.existsSync(`${dir}/${filename}`)) {
-      log('Removing already completed', filename, 'from incomplete');
+      log('Removing already completed', rmhs(filename), 'from incomplete');
       fs.unlink(`${incomplete_dir}/${filename}`, err => {
-        err && log('Error removing', filename, ':', err);
+        err && log('Error removing', rmhs(filename), ':', err);
       });
       continue;
     }
@@ -257,7 +263,7 @@ async function readFeed() {
     if(isIncomplete && !isDownloading) {
       queue.push(episodes[i]);
       added[filename] = true;
-      log('Found Incomplete', filename);
+      log('Found Incomplete', rmhs(filename));
     } else {
       if(show) {
         /*
@@ -273,7 +279,7 @@ async function readFeed() {
         if(isAfterStart && !isDownloaded && !isDownloading) {
           queue.push(episodes[i]);
           added[filename] = true;
-          log('Found', filename);
+          log('Found', rmhs(filename));
         }
       }
     }
@@ -324,9 +330,13 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
     return;
   }
 
-  let {filename, host, port, length} = args;
+  const { filename, host, port, length } = args;
+  const { complete_dir, incomplete_dir } = config.settings;
+  // Determine if we are auto organizing this file
+  const show = showFromFilename(filename);
+  const dir = show && show.automove ? `${complete_dir}/${show.name}` : complete_dir;
 
-  if(downloading[filename]) {
+  if(downloading[filename] || fs.existsSync(`${dir}/${filename}`)) {
     return;
   }
 
@@ -344,15 +354,11 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
     length = downloadInfo[filename].length;
   }
 
-  const {complete_dir, incomplete_dir} = config.settings;
 
   const completeCallback = () => {
     delete downloading[filename];
-    log('Completed', filename);
+    log('Completed', rmhs(filename));
 
-    // Determine if we are auto organizing this file
-    let show = showFromFilename(filename);
-    const dir = show && show.automove ? `${complete_dir}/${show.name}` : complete_dir;
     mkdir(dir);
 
     // Move the file from incomplete folder
@@ -362,7 +368,7 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
       () => {
         const { show, episode } = metaFromFilename(filename);
         putEpisode(show, episode);
-        log('Moved', filename);
+        log('Moved', rmhs(filename));
       }
     );
   };
@@ -375,8 +381,9 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
       return;
     }
   }
+  log('still goin');
 
-  let bar = multi.newBar(`${filename.replace(/^\[HorribleSubs\] /,'')} :percent :etas :elapseds`, {
+  let bar = multi.newBar(`${rmhs(filename)} :percent :etas :elapseds`, {
     total: length || downloadInfo[filename],
     complete: '=',
     incomplete: ' ',
@@ -391,8 +398,8 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
   // Start the transfer
   dcc.acceptFile(from, host, port, filename, length, start, (err, filename, connection) => {
     if (err) {
-      console.error('Error Starting', filename, err);
-      bars[filename].interrupt('Error Starting');
+      bars[filename].fmt = `Error Starting ${rmhs(filename)}: ${err}`;
+      bars[filename].tick();
       delete bars[filename];
       client.notice(from, err);
       return;
@@ -408,13 +415,13 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
       connection.on('error', err => {
         ws.end();
         delete downloading[filename];
-        console.error('\nError downloading ' + filename + ' ' + err);
-        if(err && err.message.match(/ECONNRESET/)) {
-          console.error('Restarting...');
-          dcc.client.ctcp(from, 'privmsg', format(resume_template, {
-            filename,
-            position: fs.statSync(`${incomplete_dir}/${filename}`).size,
-          }));
+        log('Error downloading', rmhs(filename), err);
+        if(err && err.message.match(/ECONNRESET/) && fs.existsSync(`${incomplete_dir}/${filename}`)) {
+          if(fs.statSync(`${incomplete_dir}/${filename}`).size >= length) {
+            log('Complete Anyway');
+            completeCallback();
+            return;
+          }
         }
       });
 
