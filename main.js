@@ -413,13 +413,11 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
 
       connection.on('error', err => {
         ws.end();
-        delete downloading[filename];
-        log('Error downloading', rmhs(filename), err);
-        if(err && err.message.match(/ECONNRESET/) && fs.existsSync(`${incomplete_dir}/${filename}`)) {
-          if(fs.statSync(`${incomplete_dir}/${filename}`).size >= length) {
-            completeCallback();
-            return;
-          }
+        if(err && err.message.match(/ECONNRESET/) && fs.existsSync(`${incomplete_dir}/${filename}`) && fs.statSync(`${incomplete_dir}/${filename}`).size >= length) {
+          completeCallback();
+        } else {
+          delete downloading[filename];
+          log('Error downloading', rmhs(filename), err);
         }
       });
 
