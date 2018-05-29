@@ -417,7 +417,6 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
         log('Error downloading', rmhs(filename), err);
         if(err && err.message.match(/ECONNRESET/) && fs.existsSync(`${incomplete_dir}/${filename}`)) {
           if(fs.statSync(`${incomplete_dir}/${filename}`).size >= length) {
-            log('Complete Anyway');
             completeCallback();
             return;
           }
