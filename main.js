@@ -381,7 +381,6 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
       return;
     }
   }
-  log('still goin');
 
   let bar = multi.newBar(`${rmhs(filename)} :percent :etas :elapseds`, {
     total: length || downloadInfo[filename],
