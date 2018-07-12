@@ -146,7 +146,7 @@ function getEpisodesFromShow(show) {
             // find only matching shows
             episodes.filter(e =>
               e.show_name.toLowerCase()
-                .match(show.pattern || show.name || show).toLowerCase())
+                .match((show.pattern || show.name || show).toLowerCase())
           );
         }
       });
