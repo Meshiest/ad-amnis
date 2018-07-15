@@ -1,3 +1,5 @@
+Please note that piracy is ILLEGAL and I encourage everyone to support the anime industry by paying for the content you watch!
+
 # Ad-Amnis
 
 The IRC-DCC anime downloader I was always too lazy to make.

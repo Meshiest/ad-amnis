@@ -146,7 +146,7 @@ function getEpisodesFromShow(show) {
             // find only matching shows
             episodes.filter(e =>
               e.show_name.toLowerCase()
-                .match(show.pattern.toLowerCase()))
+                .match((show.pattern || show.name || show).toLowerCase()))
           );
         }
       });
@@ -207,9 +207,10 @@ function search(terms, user) {
 // Maps a filename to the config show
 function showFromFilename(filename) {
   for(let j = 0; j < config.shows.length; j++) {
-    const { start, pattern, name } = config.shows[j];
-    if(filename.toLowerCase().match(pattern.toLowerCase())) {
-      return config.shows[j];
+    const show = config.shows[j];
+    const { pattern, name } = show;
+    if(filename.toLowerCase().match((pattern || name || show).toLowerCase())) {
+      return show;
     }
   }
   return undefined;
@@ -250,7 +251,7 @@ async function readFeed() {
       continue;
 
     let show = showFromFilename(filename);
-    const dir = show && show.automove ? `${complete_dir}/${show.name}` : complete_dir;
+    const dir = show && (typeof show.automove === 'undefined' ? config.settings.automove : show.automove) ? `${complete_dir}/${(show.name || show)}` : complete_dir;
 
     if(isIncomplete && fs.existsSync(`${dir}/${filename}`)) {
       log('Removing already completed', rmhs(filename), 'from incomplete');
@@ -334,7 +335,7 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
   const { complete_dir, incomplete_dir } = config.settings;
   // Determine if we are auto organizing this file
   const show = showFromFilename(filename);
-  const dir = show && show.automove ? `${complete_dir}/${show.name}` : complete_dir;
+  const dir = show && (typeof show.automove === 'undefined' ? config.settings.automove : show.automove) ? `${complete_dir}/${(show.name || show)}` : complete_dir;
 
   if(downloading[filename] || fs.existsSync(`${dir}/${filename}`)) {
     return;

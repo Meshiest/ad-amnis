@@ -18,20 +18,28 @@ settings:
   # Location of program specific metadata
   data_dir: 'data'
 
+  # Optional
+  # Every show will be moved other than those that specify otherwise
+  # Default is false
+  automove: true
+
 # List of shows that will be automatically downloaded
 shows:
-  - name: Example Show
+  # This will use the show as the name of the folder and show pattern
+  - Example Show
 
-    # A substring unique to this show's filenames
-    pattern: show name s3
+  # Otherwise a show can be specified like this
+  - name: Second Show
+
+    # Optional
+    # A substring unique to this show's filenames, if not specified, name will be used
+    pattern: Second Show
 
     # Optional
     # downloaded episodes moved to `complete/Example Show` instead of `complete`
+    # Default is false
     automove: true
 
     # Optional
     # Download episodes 3 and later
     start: 3
-
-  - name: Second Show
-    pattern: Second Show
