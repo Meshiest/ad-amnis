@@ -21,8 +21,8 @@ DCC.prototype.acceptFile = function (from, host, port, filename, length, positio
   }
 
   let connection_options = {
-    host: host,
-    port: port,
+    host,
+    port,
     localAddress: self.localAddress
   };
 
@@ -32,9 +32,9 @@ DCC.prototype.acceptFile = function (from, host, port, filename, length, positio
   }
   
   self.client.ctcp(from, 'privmsg', format(resume_template, {
-    filename: filename,
-    port: port,
-    position: position
+    filename,
+    port,
+    position
   }));
 
   self.client.once('dcc-accept', (from, args) => {
@@ -104,8 +104,8 @@ function log(...msg) {
 
 // remove a substring
 function rmhs(file) {
-  const {show, resolution, episode} = metaFromFilename(file);
-  return show + '#' + episode;
+  const { show, resolution, episode } = metaFromFilename(file);
+  return show + ' ' + resolution + 'p EP#' + episode;
 }
 
 const db = new sqlite3.Database(config.settings.data_dir + '/amnis.db');
@@ -164,15 +164,19 @@ function putEpisode(show, episode) {
 
 // Extracts show name, episode, and resolution from a file name
 function metaFromFilename(filename) {
-  const [, show, episode, resolution ] = (filename || '').match(/\[HorribleSubs\] (.+?) - (\d+) \[(1080|720|480)p\]\.mkv$/) || [];
+  const [, show, episode, resolution ] = (filename || '').match(/\[HorribleSubs\] (.+?) - (\d+)[a-zA-Z\d]*? \[(1080|720|480)p\]\.mkv$/) || [];
   return { show, episode: parseInt(episode), resolution: parseInt(resolution) };
 }
 
 // Searches horriblesubs' xdcc catalog
-function search(terms, user) {
+function search(terms, user, nick) {
   return new Promise((resolve, reject) => {
+    const res = user;
     if (typeof user === 'number') {
       user = `CR-ARCHIVE|${user}p`;
+    }
+    if (typeof nick === 'string') {
+      user = nick;
     }
     // Run the search on terms
     const url = `http://xdcc.horriblesubs.info/search.php?nick=${user || ''}&t=${terms || ''}`;
@@ -219,14 +223,17 @@ function showFromFilename(filename) {
 // Read feed and start downloads
 async function readFeed() {
   lastUpdate = Date.now();
-  const { complete_dir, incomplete_dir } = config.settings;
+  const { complete_dir, incomplete_dir, nick } = config.settings;
+  let { resolution } = config.settings;
+  if (!resolution) resolution = 1080;
+
   let incompleteFiles = fs.readdirSync(incomplete_dir)
     .filter(file => !downloading[file]);
 
   // Search for all episodes
   let queue = [];
   let episodes; 
-  const crArchive = search('', config.settings.resolution);
+  const crArchive = search('', resolution, nick);
   
   try {
     episodes = await crArchive;
@@ -240,7 +247,7 @@ async function readFeed() {
 
   // cannot use .filter as it does not work with async functions
   for(let i = 0; i < episodes.length; i++) {
-    const { filename, episode, showName } = episodes[i];
+    const { filename, episode, showName, resolution: iResolution } = episodes[i];
     const isDownloading = !(typeof downloading[filename] === 'undefined' || !downloading[filename]),
       isDownloaded = (await getEpisodes(showName)).includes(episode),
       isIncomplete = incompleteFiles.includes(filename),
@@ -275,9 +282,8 @@ async function readFeed() {
               - it is an incomplete download
             - it is not being currently downloaded
         */
-        const isAfterStart = episode >= (show.start || 0);
-
-        if(isAfterStart && !isDownloaded && !isDownloading) {
+        const isAfterStart = episode >= (show.start || 0), isCorrectResolution = resolution == iResolution;
+        if(isAfterStart && !isDownloaded && !isDownloading && isCorrectResolution) {
           queue.push(episodes[i]);
           added[filename] = true;
           log('Found', rmhs(filename));
@@ -320,8 +326,11 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
   if(text === 'VERSION')
     return;
 
+  const { resolution, nick } = config.settings;
+  const iHost = new RegExp(nick || `CR-ARCHIVE|${resolution}p`);
+
   // Only listen to CR-ARCHIVE users
-  if(!from.match(/CR-ARCHIVE\|(1080|720|480)p/))
+  if(!from.match(iHost))
     return;
 
   const args = DCC.parseDCC(text);
@@ -433,7 +442,9 @@ client.on('ctcp-privmsg', (from, to, text, type, message) => {
 });
 
 client.on('notice', (source, target, message) => {
-  if (message.match(/You have a DCC pending/) && source.match(/CR-ARCHIVE\|(1080|720|480)p/)) {
+  const { resolution, nick } = config.settings;
+  const host = new RegExp(nick || `CR-ARCHIVE|${resolution}p`);
+  if (message.match(/You have a DCC pending/) && source.match(host)) {
     client.say(source, 'xdcc cancel');
   }
 });
@@ -447,7 +458,8 @@ function exitHandler({cleanup, exit}, err) {
   if (cleanup) {
     console.log('Cleaning up...');
     db.close();
-    client.say(`CR-ARCHIVE|${config.settings.resolution}p`, 'xdcc cancel');
+    const host = config.settings.nick || `CR-ARCHIVE|${config.settings.resolution}p`;
+    client.say(host, 'xdcc cancel');
   }
 
   if (exit) {
