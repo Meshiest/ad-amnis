@@ -164,7 +164,7 @@ function putEpisode(show, episode) {
 
 // Extracts show name, episode, and resolution from a file name
 function metaFromFilename(filename) {
-  const [, show, episode, resolution ] = (filename || '').match(/\[HorribleSubs\] (.+?) - (\d+)[a-zA-Z\d]*? \[(1080|720|480)p\]\.mkv$/) || [];
+  const [, show, episode, resolution ] = (filename || '').match(/\[[a-zA-Z\-]+\] (.+?) - (\d+)[a-zA-Z\d]*? \[(1080|720|480)p\][\[\]a-zA-Z ]*\.mkv$/) || [];
   return { show, episode: parseInt(episode), resolution: parseInt(resolution) };
 }
 
@@ -203,7 +203,15 @@ function search(terms, user, nick) {
           };
         })
         // Filter out things that did not matched the regex
-        .filter(l => l.user));
+        .filter(l => l.user)
+        .filter(result => {
+          if (uniqueNames[result.showName]) {
+            return false;
+          } else {
+            uniqueNames[result.showName] = true;
+            return true;
+          }
+        }));
     });
   });
 }
