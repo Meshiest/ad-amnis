@@ -164,7 +164,7 @@ function putEpisode(show, episode) {
 
 // Extracts show name, episode, and resolution from a file name
 function metaFromFilename(filename) {
-  const [, show, episode, resolution ] = (filename || '').match(/\[[a-zA-Z\-]+\] (.+?) - (\d+)[a-zA-Z\d]*? \[(1080|720|480)p\][\[\]a-zA-Z ]*\.mkv$/) || [];
+  const [, show, episode, resolution ] = (filename || '').match(/\[[a-zA-Z\-]+\] (.+?) - (\d+)[a-zA-Z\d]*? [\[(](1080|720|480)p[\])][\[\]a-zA-Z \d]*\.mkv$/) || [];
   return { show, episode: parseInt(episode), resolution: parseInt(resolution) };
 }
 
@@ -180,6 +180,7 @@ function search(terms, user, nick) {
     }
     // Run the search on terms
     const url = `http://xdcc.horriblesubs.info/search.php?nick=${user || ''}&t=${terms || ''}`;
+    let uniqueNames = {};
     rest.get(url, body => {
       resolve(body
         .toString('utf8')
